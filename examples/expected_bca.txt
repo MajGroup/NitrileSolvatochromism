@@ -1,0 +1,4 @@
+# Shift contributions in cm^-1; time in ps
+# frame time_ps electrostatic exchange_repulsion orbital_relaxation dispersion_correlation scaffold_correction total
+0	0.00000000	-8.0736027752	5.8824944496	-2.9690620943	0.1520061704	-4.3289523980	-9.3371166475	# capped-bca A
+1	0.00010000	-8.0733083500	5.8819808960	-3.0013401911	0.1586329717	1.4524177838	-3.5816168896	# capped-bca B
