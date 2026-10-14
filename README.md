@@ -1,94 +1,82 @@
-# Nitrile solvatochromism
+# Nitrile Solvatochromism
 
-Read an MD trajectory and save the interaction contributions and total nitrile
-frequency shift to a text file. All contributions are frequency shifts in cm⁻¹.
-The trained model and fitted corrections are in `nitrile_model.pth`.
-Installation and example tests are described in [INSTALL.md](INSTALL.md).
+This program uses a trained neural-network model to predict how the surrounding molecular environment affects the C≡N stretching frequency of nitriles. It reads molecular dynamics (MD) trajectories from **GROMACS or LAMMPS** and calculates the instantaneous frequency shift at every saved frame.
 
-The ACN baseline uses a fixed CD₃CN vibrational response. CH₃CN and CD₃CN
-coordinate topologies are accepted. Changing masses or isotope labels in the
-topology does not select a different vibrational response.
+Besides the total frequency shift, the model provides separate contributions from electrostatics, exchange repulsion, HF delocalization, and electron correlation. This makes it possible to follow how different intermolecular interactions affect the nitrile vibration as the solvent molecules move around it.
 
-## GROMACS
+The trained model is included in `nitrile_model.pth`. For installation instructions, see [INSTALL.md](INSTALL.md).
 
-```sh
+## Running the model
+
+### GROMACS
+
+For a GROMACS trajectory, run:
+
+```bash
 python predict.py --topology run.tpr --trajectory trajectory.xtc --solute 1:6 --nitrile 1 5 6 --output shifts.txt
 ```
 
-The TPR supplies charges, elements and connectivity. The trajectory supplies
-coordinates and box dimensions.
+The `.tpr` file provides the molecular topology, atom types, and partial charges, while the `.xtc` file contains the trajectory coordinates.
 
-## LAMMPS
+### LAMMPS
 
-```sh
+For a LAMMPS trajectory, use:
+
+```bash
 python predict.py --topology system.data --trajectory trajectory.dump --solute 1:6 --nitrile 1 5 6 --timestep 0.1 --output shifts.txt
 ```
 
-Use a full-style DATA file with charges and molecule IDs. For `real` units,
-give the timestep in fs. For `metal` units, add `--units metal` and give it in ps.
+LAMMPS requires a full-style DATA file containing atomic charges and molecule IDs. The timestep is given in femtoseconds for `real` units. For `metal` units, add `--units metal` and specify the timestep in picoseconds.
 
-Select the **whole solute**. The three nitrile atoms are the attached carbon,
-nitrile carbon and nitrogen, in that order. GROMACS numbers start at 1;
-LAMMPS uses the atom IDs in the DATA file. Replace the example indices with
-your own.
+### Selecting the nitrile group
 
-## Output
+In both examples, replace the atom numbers with those of your system.
 
-Every run writes these columns:
+- `--solute` selects the entire solute molecule, including all its atoms.
+- `--nitrile` specifies three atoms in this order: the carbon attached to the nitrile group, the nitrile carbon, and the nitrile nitrogen.
+- `--output` specifies where the calculated frequency shifts will be saved.
 
-```text
-frame time_ps electrostatic exchange_repulsion orbital_relaxation dispersion_correlation scaffold_correction total
-```
+GROMACS atom numbering starts at 1. For LAMMPS, use the atom IDs from the DATA file.
 
-The five contribution columns add to the total. HF corrections are included
-in orbital relaxation; MP2 correlation is included in dispersion/correlation.
-SCS-MP2 uses opposite-spin and same-spin weights of 1.2 and 1/3.
-Each row ends with a comment identifying the response used.
+## Reading the results
 
-The electrostatic contribution is averaged across three models. The total is
-the median of three SCS-MP2 totals, and the remaining interaction contributions
-come from the same selected member. The scaffold correction is then added.
+The program saves the results in a text file, with one row for each trajectory frame. Each row contains the simulation time, the individual interaction contributions, and the total C≡N frequency shift in cm⁻¹.
 
-To read the numerical columns, including a file containing a single frame:
+The electrostatic contribution is averaged across three trained models. The final frequency shift is selected as the median of their SCS-MP2 predictions, with the other interaction contributions taken from the corresponding model.
+
+You can easily load the results into Python:
 
 ```python
 import numpy as np
+
 data = np.loadtxt("shifts.txt", ndmin=2)
+
 time = data[:, 1]
-total = data[:, 7]
+total_shift = data[:, -1]
 ```
 
-`--stride 10` reads every tenth frame. `--start` and `--stop` select a frame
-range; the stop frame is excluded. `--overwrite` replaces an existing output.
+For longer trajectories, `--stride 10` processes every tenth frame. You can also select a range of frames with `--start` and `--stop`, or use `--overwrite` to replace an existing output file.
 
-## Larger solutes
+## Using the model with other molecules
 
-The studied capped BCA molecule is recognised automatically. Its native HF
-correction appears in `scaffold_correction`. The ACN opposite-spin and same-spin
-correlation contributions are retained. The two supported reference conformers
-are selected by geometry. Frames more than 0.10 Å heavy-atom RMSD from both
-are rejected. This distance is a software acceptance threshold; it has no
-calibrated relationship to prediction error. The BCA contact correction
-supports environment elements H, C, N, O and S.
+The model was originally developed for acetonitrile using the CD₃CN vibrational response. Both CH₃CN and CD₃CN coordinate topologies are accepted, but the same CD₃CN vibrational parameters are used in both cases.
 
-Other scaffolds use the transferred ACN response. They have no native
-correction in this package. `--probe virtual-acn` explicitly selects that
-baseline. The backbone is excluded from the solvent field when it is part
-of the solute selection. The default electrostatic calculation requires
-neutral environment molecules and uses their nearest periodic images.
+We also provide a correction for the nitrile group in the capped β-cyanoalanine model peptide (Ac–Bca–NHMe). The program recognizes this molecule automatically and applies the additional correction when the geometry is within the supported range of the two reference conformations.
 
-## Examples
+For other nitrile-containing molecules, the acetonitrile model can be used as an approximate starting point by selecting `--probe virtual-acn`. These predictions use the original acetonitrile vibrational response without a molecule-specific correction.
 
-The water examples contain three MD frames, encoded in both formats.
-The BCA example contains two frozen test structures:
+The default electrostatic calculation assumes electrically neutral solvent molecules and uses their nearest periodic images.
 
-```sh
+## Trying the examples
+
+Example trajectories are included to help you check that everything is working. The water examples contain three MD frames in GROMACS and LAMMPS formats.
+
+You can also try the capped β-cyanoalanine example:
+
+```bash
 python predict.py --topology examples/bca.data --trajectory examples/bca.dump --solute 1:23 --nitrile 6 7 8 --timestep 0.1 --output bca.txt
 ```
 
-Reference outputs are in `examples/expected_water.txt` and
-`examples/expected_bca.txt`.
+The expected results are provided in `examples/expected_water.txt` and `examples/expected_bca.txt`.
 
-This package contains the trained model and trajectory-inference scripts.
-Training data, fitting scripts and IR/2D-IR spectral calculations are outside
-this release.
+The package includes the trained model and everything needed to calculate frequency shifts along MD trajectories. The original training data, fitting scripts, and routines for simulating linear and 2D IR spectra are not included in this release.
